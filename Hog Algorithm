@@ -1,0 +1,98 @@
+import cv2
+import dlib
+import face_recognition
+import serial
+
+# Load known faces and their names
+known_face_encodings = []
+known_face_names = []
+
+def add_known_face(image_path, name):
+    # Load the image of the known person
+    image = face_recognition.load_image_file(image_path)
+
+    # Encode the known person's face
+    face_encoding = face_recognition.face_encodings(image)[0]
+
+    # Add the face encoding and name to the lists
+    known_face_encodings.append(face_encoding)
+    known_face_names.append(name)
+
+def detect_faces_hog_video():
+    # Load the HOG face detector provided by dlib
+    hog_face_detector = dlib.get_frontal_face_detector()
+
+    # Open the webcam (you can replace 0 with the path to a video file, if you want to process a video)
+    cap = cv2.VideoCapture(0)
+
+    # Open serial communication with Arduino
+    arduino = serial.Serial('COM4', 9600)  # Replace 'COM4' with the correct port for your Arduino
+
+    while True:
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+
+        if not ret:
+            print("Failed to grab frame")
+            break
+
+        # Convert the frame to grayscale (dlib face detector requires grayscale images)
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Detect faces using the HOG face detector
+        faces = hog_face_detector(gray_frame)
+
+        # Count the number of detected faces
+        num_faces = len(faces)
+
+        # Process each detected face
+        for face in faces:
+            # Extract the bounding box coordinates for the detected face
+            x, y, w, h = face.left(), face.top(), face.width(), face.height()
+
+            # Encode the detected face
+            face_encoding = face_recognition.face_encodings(frame, [(y, x + w, y + h, x)])[0]
+
+            # Recognize the face by comparing with known faces
+            name = "Unknown"
+            face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+            min_distance_index = face_distances.argmin()
+
+            if face_distances[min_distance_index] < 0.6:
+                name = known_face_names[min_distance_index]
+
+            # Draw a rectangle around the detected face and display the name
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+            # Calculate confidence score
+            confidence = 1 - face_distances[min_distance_index]
+
+            # Display confidence score
+            cv2.putText(frame, "Confidence: {:.2f}".format(confidence), (x, y + h + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+        # Display the number of faces detected
+        cv2.putText(frame, "Number of Faces: {}".format(num_faces), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+        # Display the frame with detected faces and recognized names
+        cv2.imshow('Real-Time Face Detection and Recognition using HOG', frame)
+
+        # Send a signal to Arduino to indicate face detection
+        arduino.write(b'1')  # Sending the character '1' as a byte
+
+        # Press 'q' to exit the loop and stop the video stream
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Release the video capture object and close the window
+    cap.release()
+    cv2.destroyAllWindows()
+
+if _name_ == "_main_":
+    # Add known faces and names
+    add_known_face('Soujanya HS.jpg', 'Soujanya HS')
+    add_known_face('Rakshita.jpg', 'Rakshita')
+    # Add more known faces and names as needed
+
+    # Start real-time face detection and recognition
+    detect_faces_hog_video()
