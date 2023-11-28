@@ -1,0 +1,79 @@
+import cv2
+import os
+import serial
+
+# Open serial communication with Arduino
+arduino = serial.Serial('COM4', 9600)  # Replace 'COM3' with the correct port for your Arduino
+
+# https://github.com/Itseez/opencv/blob/master
+# /data/haarcascades/haarcascade_eye.xml
+# Trained XML file for detecting eyes
+face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+
+# capture frames from a camera
+cap = cv2.VideoCapture(0)
+
+# Create a directory to store face data
+data_dir = 'face_data'
+
+if not os.path.exists(data_dir):
+    os.makedirs(data_dir)
+
+# Variables to store face data
+face_count = 0
+person_name = input("Enter the name of the person: ")
+
+
+def put_name_on_frame(frame, name, x, y):
+    # Set the font style and scale
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 1
+
+    # Calculate the text size
+    (text_width, text_height), _ = cv2.getTextSize(name, font, scale, 1)
+
+    # Calculate the position to put the name above the frame
+    text_x = x + (w - text_width) // 2
+    text_y = y - 10
+
+    # Put the name on the frame
+    cv2.putText(frame, name, (text_x, text_y), font, scale, (255, 255, 0), 1, cv2.LINE_AA)
+
+
+# loop runs if capturing has been initialized.
+while 1:
+    # reads frames from a camera
+    ret, img = cap.read()
+
+    # convert to gray scale of each frames
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Detects faces of different sizes in the input image
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    for (x, y, w, h) in faces:
+        # To draw a rectangle around the face
+        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 0), 2)
+
+        # Put the name above the face frame
+        put_name_on_frame(img, person_name, x, y)
+
+        roi_gray = gray[y:y + h, x:x + w]
+        roi_color = img[y:y + h, x:x + w]
+
+        # Send a signal to Arduino to indicate face detection
+        arduino.write(b'1')  # Sending the character '1' as a byte
+
+    # Display an image in a window
+    cv2.imshow('img', img)
+
+    # Wait for Esc key to stop
+    k = cv2.waitKey(30) & 0xff
+    if k == 27:
+        break
+
+# Close the window
+cap.release()
+
+# De-allocate any associated memory usage
+cv2.destroyAllWindows()
